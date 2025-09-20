@@ -21,21 +21,19 @@
 module.exports = grammar({
   name: "flix",
 
-  rules: {
-    // NOTE: add the actual grammar rules
-    changeme: ($) => "",
-  },
-});
-
-module.exports = grammar({
-  name: "flix",
-
   extras: ($) => [/\s+/, $.comment],
 
   conflicts: ($) => [
     [$.primary_expression, $.pattern],
     [$.type, $.primary_expression],
     [$.type, $.pattern],
+    [$.trait_constraint, $.type_name],
+    [$.declaration, $.statement],
+    [$.set, $.dict],
+    [$.type_tuple, $.type_group],
+    [$.type_param, $.type_arrow],
+    [$.type_record_field, $.type_arrow],
+    [$.parameter, $.type_arrow],
   ],
 
   word: ($) => $.identifier,
@@ -73,49 +71,55 @@ module.exports = grammar({
       seq("namespace", field("name", $.qualified_name), field("body", $.block)),
 
     trait_decl: ($) =>
-      seq(
-        optional($.doc_comment),
-        repeat($.annotation),
-        repeat($.modifier),
-        "trait",
-        field("name", $.identifier),
-        field("type_params", optional($.type_params)),
-        field("super", repeat($.trait_constraint)),
-        field("assoc_types", repeat($.assoc_type_sig)),
-        field("sigs", repeat($.sig_decl)),
-        field("defs", repeat($.def_decl)),
+      prec.right(
+        seq(
+          optional($.doc_comment),
+          repeat($.annotation),
+          repeat($.modifier),
+          "trait",
+          field("name", $.identifier),
+          field("type_params", optional($.type_params)),
+          field("super", repeat($.trait_constraint)),
+          field("assoc_types", repeat($.assoc_type_sig)),
+          field("sigs", repeat($.sig_decl)),
+          field("defs", repeat($.def_decl)),
+        ),
       ),
 
     instance_decl: ($) =>
-      seq(
-        optional($.doc_comment),
-        repeat($.annotation),
-        repeat($.modifier),
-        "instance",
-        field("trait", $.qualified_name),
-        field("type_params", repeat($.type_param)),
-        field("inst_type", $.type),
-        field("where", repeat($.trait_constraint)),
-        field("eq_constraints", repeat($.equality_constraint)),
-        field("assoc_defs", repeat($.assoc_type_def)),
-        field("defs", repeat($.def_decl)),
-        field("redefs", repeat($.redef_decl)),
+      prec.right(
+        seq(
+          optional($.doc_comment),
+          repeat($.annotation),
+          repeat($.modifier),
+          "instance",
+          field("trait", $.qualified_name),
+          field("type_params", repeat($.type_param)),
+          field("inst_type", $.type),
+          field("where", repeat($.trait_constraint)),
+          field("eq_constraints", repeat($.equality_constraint)),
+          field("assoc_defs", repeat($.assoc_type_def)),
+          field("defs", repeat($.def_decl)),
+          field("redefs", repeat($.redef_decl)),
+        ),
       ),
 
     sig_decl: ($) =>
-      seq(
-        optional($.doc_comment),
-        repeat($.annotation),
-        repeat($.modifier),
-        "sig",
-        field("name", $.identifier),
-        field("type_params", optional($.type_params)),
-        field("params", optional($.parameters)),
-        optional(seq(":", field("result_type", $.type))),
-        optional(seq("with", field("effect_type", $.type))),
-        repeat($.trait_constraint),
-        repeat($.equality_constraint),
-        optional(seq("=", field("default", $.expression))),
+      prec.right(
+        seq(
+          optional($.doc_comment),
+          repeat($.annotation),
+          repeat($.modifier),
+          "sig",
+          field("name", $.identifier),
+          field("type_params", optional($.type_params)),
+          field("params", optional($.parameters)),
+          optional(seq(":", field("result_type", $.type))),
+          optional(seq("with", field("effect_type", $.type))),
+          repeat($.trait_constraint),
+          repeat($.equality_constraint),
+          optional(seq("=", field("default", $.expression))),
+        ),
       ),
 
     def_decl: ($) =>
@@ -185,9 +189,8 @@ module.exports = grammar({
         optional($.doc_comment),
         repeat($.annotation),
         repeat($.modifier),
-        "effect",
+        "eff",
         field("name", $.identifier),
-        field("type_params", optional($.type_params)),
         "{",
         repeat($.op_decl),
         "}",
@@ -224,16 +227,18 @@ module.exports = grammar({
       ),
 
     // Constraints (simplified)
-    trait_constraint: ($) => seq($.qualified_name, repeat($.type)),
+    trait_constraint: ($) => prec.right(seq($.qualified_name, repeat($.type))),
     equality_constraint: ($) => seq($.type, "=", $.type),
 
     assoc_type_sig: ($) =>
-      seq(
-        "assoc",
-        field("name", $.identifier),
-        field("params", optional($.type_params)),
-        optional(seq(":", field("kind", $.kind))),
-        optional(seq("=", field("default", $.type))),
+      prec.left(
+        seq(
+          "assoc",
+          field("name", $.identifier),
+          field("params", optional($.type_params)),
+          optional(seq(":", field("kind", $.kind))),
+          optional(seq("=", field("default", $.type))),
+        ),
       ),
 
     assoc_type_def: ($) =>
@@ -297,10 +302,7 @@ module.exports = grammar({
         ),
       ),
 
-    lambda_params: ($) =>
-      seq(
-        optional($.parameters), // or a slim version like python lambda_parameters
-      ),
+    lambda_params: ($) => $.parameters,
 
     conditional_expression: ($) =>
       prec.right(seq($.disjunction, "if", $.disjunction, "else", $.expression)),
@@ -473,10 +475,11 @@ module.exports = grammar({
         $.type_record,
       ),
 
-    type_var: ($) => $.identifier,
+    type_var: ($) => prec(1, $.identifier),
     type_name: ($) => $.qualified_name,
 
-    type_apply: ($) => prec.left(seq($.type_name, repeat1($.type_atom))),
+    type_apply: ($) =>
+      prec(1, prec.left(seq($.type_name, repeat1($.type_atom)))),
 
     type_atom: ($) =>
       choice(
@@ -535,7 +538,7 @@ module.exports = grammar({
     literal: ($) =>
       choice($.integer, $.float, $.string, "true", "false", "null", "()"),
 
-    integer: (_) => token(choice(/0|[1-9][0-9_]*/)),
+    integer: (_) => token(/0|[1-9][0-9_]*/),
 
     float: (_) =>
       token(
@@ -550,11 +553,13 @@ module.exports = grammar({
 
     // Kinds (placeholder)
     kind: ($) =>
-      choice(
-        "*",
-        seq("(", commaSep1($.kind), ")"),
-        seq($.kind, "->", $.kind),
-        $.identifier,
+      prec.right(
+        choice(
+          "*",
+          seq("(", commaSep1($.kind), ")"),
+          seq($.kind, "->", $.kind),
+          $.identifier,
+        ),
       ),
 
     // Derivations (placeholder)
@@ -563,14 +568,14 @@ module.exports = grammar({
     // Misc helpers
     semi: (_) => ";",
 
-    comment: (_) => token(choice(seq("//", /.*/), seq("/*", /[^]*?/, "*/"))),
+    comment: (_) => token(choice(seq("//", /.*/), seq("/*", /.*/, "*/"))),
   },
 });
 
 // Helpers
 
 function sep1(rule, separator) {
-  return seq(rule, repeat(seq(separator, rule)));
+  return prec.left(seq(rule, repeat(prec.left(seq(separator, rule)))));
 }
 
 function commaSep1(rule) {
