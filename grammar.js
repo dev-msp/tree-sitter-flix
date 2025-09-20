@@ -59,130 +59,13 @@ module.exports = grammar({
         // $.trait_decl,
         // $.instance_decl,
         // $.sig_decl,
-        // $.def_decl,
+        $.def_decl,
         // $.enum_decl,
         // $.struct_decl,
         $.effect_decl,
         // $.type_alias_decl,
       ),
-    //
-    // namespace_decl: ($) =>
-    //   seq("namespace", field("name", $.qualified_name), field("body", $.block)),
-    //
-    // trait_decl: ($) =>
-    //   prec.right(
-    //     seq(
-    //       optional($.doc_comment),
-    //       repeat($.annotation),
-    //       repeat($.modifier),
-    //       "trait",
-    //       field("name", $.identifier),
-    //       field("type_params", optional($.type_params)),
-    //       field("super", repeat($.trait_constraint)),
-    //       field("assoc_types", repeat($.assoc_type_sig)),
-    //       field("sigs", repeat($.sig_decl)),
-    //       field("defs", repeat($.def_decl)),
-    //     ),
-    //   ),
-    //
-    // instance_decl: ($) =>
-    //   prec.right(
-    //     seq(
-    //       optional($.doc_comment),
-    //       repeat($.annotation),
-    //       repeat($.modifier),
-    //       "instance",
-    //       field("trait", $.qualified_name),
-    //       field("type_params", repeat($.type_param)),
-    //       field("inst_type", $.type),
-    //       field("where", repeat($.trait_constraint)),
-    //       field("eq_constraints", repeat($.equality_constraint)),
-    //       field("assoc_defs", repeat($.assoc_type_def)),
-    //       field("defs", repeat($.def_decl)),
-    //       field("redefs", repeat($.redef_decl)),
-    //     ),
-    //   ),
-    //
-    // sig_decl: ($) =>
-    //   prec.left(
-    //     seq(
-    //       optional($.doc_comment),
-    //       repeat($.annotation),
-    //       repeat($.modifier),
-    //       "sig",
-    //       field("name", $.identifier),
-    //       field("type_params", optional($.type_params)),
-    //       field("params", optional($.parameters)),
-    //       optional(seq(":", field("result_type", $.type))),
-    //       optional(seq("with", field("effect_type", $.type))),
-    //       repeat($.trait_constraint),
-    //       repeat($.equality_constraint),
-    //       optional(seq("=", field("default", $.expression))),
-    //     ),
-    //   ),
-    //
-    def_decl: ($) =>
-      seq(
-        optional($.doc_comment),
-        repeat($.annotation),
-        repeat($.modifier),
-        "def",
-        field("name", $.identifier),
-        field("type_params", optional($.type_params)),
-        field("params", optional($.parameters)),
-        optional(seq(":", field("result_type", $.type))),
-        // optional(seq("with", field("effect_type", $.type))),
-        // repeat($.trait_constraint),
-        // repeat($.equality_constraint),
-        "=",
-        field("body", $.expression),
-      ),
 
-    // enum_decl: ($) =>
-    //   seq(
-    //     optional($.doc_comment),
-    //     repeat($.annotation),
-    //     repeat($.modifier),
-    //     "enum",
-    //     field("name", $.identifier),
-    //     field("type_params", optional($.type_params)),
-    //     field("derivations", optional($.derivations)),
-    //     "{",
-    //     repeat($.case_decl),
-    //     "}",
-    //   ),
-    //
-    // case_decl: ($) =>
-    //   seq(
-    //     "case",
-    //     field("name", $.identifier),
-    //     optional(field("payload", $.type_tuple)),
-    //     optional(seq(":", field("scheme", $.scheme))),
-    //   ),
-    //
-    // struct_decl: ($) =>
-    //   seq(
-    //     optional($.doc_comment),
-    //     repeat($.annotation),
-    //     repeat($.modifier),
-    //     "struct",
-    //     field("name", $.identifier),
-    //     field("type_params", optional($.type_params)),
-    //     optional(seq(":", field("scheme", $.scheme))),
-    //     "{",
-    //     repeat($.struct_field),
-    //     "}",
-    //   ),
-    //
-    // struct_field: ($) =>
-    //   seq(
-    //     repeat($.modifier),
-    //     field("name", $.identifier),
-    //     ":",
-    //     field("type", $.type),
-    //     optional($.semi),
-    //   ),
-    //
     effect_decl: ($) =>
       seq(
         optional($.doc_comment),
@@ -195,60 +78,22 @@ module.exports = grammar({
         "}",
       ),
 
-    // op_decl: ($) =>
-    //   seq(
-    //     "op",
-    //     field("name", $.identifier),
-    //     field("params", optional($.parameters)),
-    //     optional(seq(":", field("result_type", $.type))),
-    //     optional(seq("with", field("effect_type", $.type))),
-    //     optional($.semi),
-    //   ),
-    //
-    // type_alias_decl: ($) =>
-    //   seq(
-    //     optional($.doc_comment),
-    //     repeat($.annotation),
-    //     repeat($.modifier),
-    //     "type",
-    //     field("name", $.identifier),
-    //     field("type_params", optional($.type_params)),
-    //     "=",
-    //     field("aliased", $.type),
-    //   ),
-    //
-    // redef_decl: ($) =>
-    //   seq(
-    //     "redef",
-    //     field("name", $.identifier),
-    //     "=",
-    //     field("expr", $.expression),
-    //   ),
-    //
-    // // Constraints (simplified)
-    // trait_constraint: ($) => prec.right(seq($.qualified_name, repeat($.type))),
-    // equality_constraint: ($) => seq($.type, "=", $.type),
-    //
-    // assoc_type_sig: ($) =>
-    //   prec.left(
-    //     seq(
-    //       "assoc",
-    //       field("name", $.identifier),
-    //       field("params", optional($.type_params)),
-    //       optional(seq(":", field("kind", $.kind))),
-    //       optional(seq("=", field("default", $.type))),
-    //     ),
-    //   ),
-    //
-    // assoc_type_def: ($) =>
-    //   seq(
-    //     "assoc",
-    //     field("name", $.qualified_name),
-    //     field("lhs", $.type),
-    //     "=",
-    //     field("rhs", $.type),
-    //   ),
-    //
+    def_decl: ($) =>
+      seq(
+        optional($.doc_comment),
+        repeat($.annotation),
+        repeat($.modifier),
+        "def",
+        field("name", $.identifier),
+        field("params", $.parameters),
+        optional(seq(":", field("result_type", $.type))),
+        // optional(seq("with", field("effect_type", $.type))),
+        // repeat($.trait_constraint),
+        // repeat($.equality_constraint),
+        // "=",
+        // field("body", $.expression),
+      ),
+
     // Use/Import (simplified)
     use_or_import: ($) =>
       seq(
@@ -259,8 +104,7 @@ module.exports = grammar({
       ),
 
     // Parameters
-    parameters: ($) =>
-      seq("(", optional(commaSep1($.parameter)), optional(","), ")"),
+    parameters: ($) => seq("(", optional(commaSep1($.parameter)), ")"),
 
     parameter: ($) =>
       seq(
@@ -277,16 +121,6 @@ module.exports = grammar({
         optional(seq("=", field("default", $.type))),
       ),
 
-    // // Statements (placeholder – Flix may be expression-oriented)
-    // statement: ($) => choice($.expression, $.def_decl),
-    //
-    // block: ($) =>
-    //   seq(
-    //     "{",
-    //     repeat(choice($.declaration, $.statement, $.use_or_import)),
-    //     "}",
-    //   ),
-    //
     // Expressions (baseline similar to Python precedence/calls/index/attr)
     expression: ($) =>
       choice($.lambda, $.conditional_expression, $.disjunction),
@@ -295,13 +129,11 @@ module.exports = grammar({
       prec.right(
         seq(
           "lambda",
-          optional($.lambda_params),
+          optional($.parameters),
           "=>",
           field("body", $.expression),
         ),
       ),
-
-    lambda_params: ($) => $.parameters,
 
     conditional_expression: ($) =>
       prec.right(seq($.disjunction, "if", $.disjunction, "else", $.expression)),
@@ -311,83 +143,6 @@ module.exports = grammar({
 
     inversion: ($) => seq("not", $.inversion),
 
-    // comparison: ($) =>
-    //   prec.left(
-    //     seq(
-    //       $.bitwise_or,
-    //       repeat(
-    //         seq(
-    //           field(
-    //             "operator",
-    //             choice(
-    //               "==",
-    //               "!=",
-    //               "<=",
-    //               "<",
-    //               ">=",
-    //               ">",
-    //               "in",
-    //               seq("not", "in"),
-    //               "is",
-    //               seq("is", "not"),
-    //             ),
-    //           ),
-    //           // $.bitwise_or,
-    //         ),
-    //       ),
-    //     ),
-    //   ),
-
-    // bitwise_or: ($) => leftBinarySym($, "|", $.bitwise_xor),
-    // bitwise_xor: ($) => leftBinarySym($, "^", $.bitwise_and),
-    // bitwise_and: ($) => leftBinarySym($, "&", $.shift_expr),
-    //
-    // shift_expr: ($) => leftBinarySym($, choice("<<", ">>"), $.sum),
-    // sum: ($) => leftBinarySym($, choice("+", "-"), $.term),
-    // term: ($) => leftBinarySym($, choice("*", "/", "//", "%", "@"), $.factor),
-    //
-    // factor: ($) => choice(seq(choice("+", "-", "~"), $.factor), $.power),
-    //
-    // power: ($) =>
-    //   prec.right(seq($.await_primary, optional(seq("**", $.factor)))),
-    //
-    // await_primary: ($) =>
-    //   choice(seq("await", $.primary_expression), $.primary_expression),
-    //
-    // primary_expression: ($) =>
-    //   choice($.call, $.subscription, $.attribute, $.atom),
-    //
-    // call: ($) =>
-    //   prec(
-    //     9,
-    //     seq(
-    //       field("function", $.primary_expression),
-    //       field("arguments", $.argument_list),
-    //     ),
-    //   ),
-    //
-    // subscription: ($) =>
-    //   prec(
-    //     9,
-    //     seq(
-    //       field("value", $.primary_expression),
-    //       "[",
-    //       field("subscript", $.slices),
-    //       optional(","),
-    //       "]",
-    //     ),
-    //   ),
-    //
-    // attribute: ($) =>
-    //   prec(
-    //     9,
-    //     seq(
-    //       field("object", $.primary_expression),
-    //       ".",
-    //       field("attribute", $.identifier),
-    //     ),
-    //   ),
-    //
     argument_list: ($) =>
       seq(
         "(",
@@ -410,96 +165,29 @@ module.exports = grammar({
     keyword_argument: ($) =>
       seq(field("name", $.identifier), "=", field("value", $.expression)),
 
-    // slices: ($) => commaSep1(choice($.slice, $.expression)),
-    // slice: ($) =>
-    //   seq(
-    //     optional($.expression),
-    //     ":",
-    //     optional($.expression),
-    //     optional(seq(":", optional($.expression))),
-    //   ),
-    //
-    // atom: ($) =>
-    //   choice($.identifier, $.literal, $.tuple, $.list, $.dict, $.set, $.group),
-    //
-    // group: ($) => seq("(", choice($.expression), ")"),
-    // tuple: ($) =>
-    //   seq(
-    //     "(",
-    //     optional(seq($.expression, ",", optional(commaSep1($.expression)))),
-    //     ")",
-    //   ),
-    // list: ($) =>
-    //   seq("[", optional(commaSep1($.expression)), optional(","), "]"),
-    // set: ($) => seq("{", optional(commaSep1($.expression)), optional(","), "}"),
-    // dict: ($) =>
-    //   seq(
-    //     "{",
-    //     optional(commaSep1(choice($.pair, $.double_star_argument))),
-    //     optional(","),
-    //     "}",
-    //   ),
-    // pair: ($) => seq($.expression, ":", $.expression),
-    //
-    // // Patterns (basic)
-    // pattern: ($) =>
-    //   choice(
-    //     $.wildcard_pattern,
-    //     $.capture_pattern,
-    //     $.literal_pattern,
-    //     $.tuple_pattern,
-    //     $.constructor_pattern,
-    //     $.record_pattern,
-    //   ),
-    //
-    // wildcard_pattern: ($) => prec(1, "_"),
-    // capture_pattern: ($) => prec(1, $.identifier),
-    // literal_pattern: ($) => $.literal,
-    // tuple_pattern: ($) => seq("(", commaSep1($.pattern), optional(","), ")"),
-    // constructor_pattern: ($) =>
-    //   seq($.qualified_name, optional(commaSep1($.pattern))),
-    // record_pattern: ($) =>
-    //   seq("{", commaSep1($.record_label_pattern), optional(","), "}"),
-    // record_label_pattern: ($) => seq($.identifier, ":", $.pattern),
-    //
     // Types (basic surface syntax)
     type: ($) =>
       choice(
-        $.type_var,
-        $.type_name,
-        $.type_apply,
-        $.type_tuple,
+        $.applied_type,
+        $.type_atom,
+        // $.type_tuple,
         $.type_arrow,
-        $.type_group,
-        $.type_record,
+        // $.type_group,
+        // $.type_record,
       ),
 
-    type_var: ($) => prec(1, $.identifier),
-    type_name: ($) => $.qualified_name,
+    // type application with one or more type arguments, e.g., List[Int], Map[String, Int]
+    applied_type: ($) =>
+      seq($.type_name, seq("[", commaSep1($.type_param), optional(","), "]")),
 
-    type_apply: ($) =>
-      prec(1, prec.left(seq($.type_name, repeat1($.type_atom)))),
+    type_name: ($) => prec(2, $.qualified_name),
 
     type_atom: ($) =>
-      choice(
-        $.type_var,
-        $.type_name,
-        $.type_group,
-        $.type_tuple,
-        $.type_record,
-      ),
+      choice($.type_name, $.type_group, $.type_tuple, $.type_record),
 
     type_tuple: ($) => seq("(", commaSep1($.type), optional(","), ")"),
 
-    type_arrow: ($) =>
-      prec.right(
-        seq(
-          // Arrow T1 -> T2  (optionally multiple args)
-          commaSep1($.type),
-          "->",
-          $.type,
-        ),
-      ),
+    type_arrow: ($) => sep2($.type, "->", prec.right),
 
     type_record: ($) =>
       seq("{", optional(commaSep1($.type_record_field)), optional(","), "}"),
@@ -507,14 +195,6 @@ module.exports = grammar({
 
     type_group: ($) => seq("(", $.type, ")"),
 
-    // scheme: ($) =>
-    //   seq(
-    //     // Simple: forall [type-params]. type  (optional effects after with)
-    //     optional(seq("forall", $.type_params)),
-    //     $.type,
-    //     optional(seq("with", $.type)),
-    //   ),
-    //
     // Names
     qualified_name: ($) => sep1($.identifier, "."),
     identifier: (_) => /[A-Za-z_][A-Za-z0-9_]*/,
@@ -533,37 +213,6 @@ module.exports = grammar({
     annotation: ($) => seq("@", $.identifier, optional($.argument_list)),
     doc_comment: (_) => token(seq("///", /.*/)),
     //
-    // // Literals (adjust to Flix specifics)
-    // literal: ($) =>
-    //   choice($.integer, $.float, $.string, "true", "false", "null", "()"),
-    //
-    // integer: (_) => token(/0|[1-9][0-9_]*/),
-    //
-    // float: (_) =>
-    //   token(
-    //     choice(
-    //       /[0-9][0-9_]*\.[0-9_]+([eE][+-]?[0-9_]+)?/,
-    //       /\.[0-9_]+([eE][+-]?[0-9_]+)?/,
-    //       /[0-9][0-9_]*[eE][+-]?[0-9_]+/,
-    //     ),
-    //   ),
-    //
-    // string: (_) => token(seq('"', repeat(choice(/[^"\\\n]/, /\\./)), '"')),
-    //
-    // // Kinds (placeholder)
-    // kind: ($) =>
-    //   prec.right(
-    //     choice(
-    //       "*",
-    //       seq("(", commaSep1($.kind), ")"),
-    //       seq($.kind, "->", $.kind),
-    //       $.identifier,
-    //     ),
-    //   ),
-    //
-    // // Derivations (placeholder)
-    // derivations: ($) => seq("deriving", commaSep1($.qualified_name)),
-    //
     // Misc helpers
     semi: (_) => ";",
 
@@ -573,11 +222,17 @@ module.exports = grammar({
 
 // Helpers
 
-function sep1(rule, separator) {
-  return prec.right(seq(rule, repeat(prec.right(seq(separator, rule)))));
+function sep1(rule, separator, precedence = (x) => x) {
+  return precedence(seq(rule, repeat(precedence(seq(separator, rule)))));
 }
 
-function commaSep1(rule) {
+function sep2(rule, separator, precedence = (x) => x) {
+  return precedence(
+    seq(rule, separator, rule, repeat1(precedence(seq(separator, rule)))),
+  );
+}
+
+function commaSep1(rule, precedence = (x) => x) {
   return sep1(rule, ",");
 }
 
