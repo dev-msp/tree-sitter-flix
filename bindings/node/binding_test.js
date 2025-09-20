@@ -5,5 +5,12 @@ const Parser = require("tree-sitter");
 
 test("can load grammar", () => {
   const parser = new Parser();
-  assert.doesNotThrow(() => parser.setLanguage(require(".")));
+  assert.doesNotThrow(() => {
+    try {
+      return parser.setLanguage(require("."));
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  });
 });

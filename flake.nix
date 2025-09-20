@@ -21,10 +21,8 @@
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
             tree-sitter
-            nodejs
+            bun
             python3
-            cmake
-            node-gyp
           ];
         };
       }
