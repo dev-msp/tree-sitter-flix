@@ -1,10 +1,6 @@
-eff Secret {
-    def retrieve(key: String): Unit -> Option[String]
-}
-
-enum Option[t] {
-    case None
-    case Some(t)
-}
-
-type alias F[t] = t -> Option[t]
+def runWithIO(f: Unit -> String \ ef): String \ (ef - {Generate}) + {IO, Secret} =
+    run {
+        f()
+    } with handler Generate {
+        def system_prompt(resume) = "FedEx" |> Secret.retrieve |> resume
+    }

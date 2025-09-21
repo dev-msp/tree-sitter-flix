@@ -18,6 +18,10 @@
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
 
+const parens = (...rules) => surr("(", ")", ...rules);
+const brackets = (...rules) => surr("[", "]", ...rules);
+const braces = (...rules) => surr("{", "}", ...rules);
+
 module.exports = grammar({
   name: "flix",
 
@@ -32,7 +36,7 @@ module.exports = grammar({
     [$.type_tuple, $.type_group],
     [$.type_param, $.type_arrow],
     [$.type_record_field, $.type_arrow],
-    [$.parameter, $.type_arrow],
+    [$.eff_expr, $.def_decl],
   ],
 
   word: ($) => $.identifier,
@@ -53,12 +57,32 @@ module.exports = grammar({
     // Declarations (rough surface-syntax sketch)
     declaration: ($) =>
       choice(
-        $.def_decl,
-        // $.enum_decl,
+        $.mod_decl,
+        $.def_decl_with_body,
+        $.enum_decl,
         // $.struct_decl,
         $.effect_decl,
         $.type_alias_decl,
       ),
+    mod_decl: ($) =>
+      moddedSeq($, "mod", field("name", $.identifier), braces(repeat($._unit))),
+    enum_decl: ($) =>
+      moddedSeq(
+        $,
+        "enum",
+        field("name", $.identifier),
+        optional(field("type_params", $.type_params)),
+        choice(parens($.type), braces(repeat1($.enum_case))),
+      ),
+
+    enum_case: ($) =>
+      seq(
+        "case",
+        field("name", $.identifier),
+        optional(field("params", parens(commaSep1($.type_name)))),
+        optional(seq(":", field("result_type", $.type))),
+      ),
+    // struct_decl: ($) =>
     type_alias_decl: ($) =>
       moddedSeq(
         $,
@@ -75,16 +99,30 @@ module.exports = grammar({
         "eff",
         field("name", $.identifier),
         "{",
-        repeat($.def_decl),
+        repeat($.pure_def_decl),
         "}",
       ),
-    def_decl: ($) =>
+    pure_def_decl: ($) =>
       moddedSeq(
         $,
         "def",
         field("name", $.identifier),
-        field("params", $.parameters),
+        field("params", $.fnParameters),
         optional(seq(":", field("result_type", $.type))),
+      ),
+    def_decl: ($) =>
+      seq($.pure_def_decl, optional(seq("\\", field("effect", $.eff_expr)))),
+    def_decl_with_body: ($) =>
+      seq(
+        $.def_decl,
+        "=",
+        field(
+          "body",
+          choice(
+            braces(repeat1(seq($.expression, ";"))),
+            repeat1($.expression),
+          ),
+        ),
       ),
     // Use/Import (simplified)
     use_or_import: ($) =>
@@ -94,14 +132,16 @@ module.exports = grammar({
         optional(seq("as", $.identifier)),
         optional($.semi),
       ),
-    // Parameters
-    parameters: ($) => seq("(", optional(commaSep1($.parameter)), ")"),
-    parameter: ($) =>
-      seq(
-        field("name", $.identifier),
-        optional(seq(":", field("type", $.type))),
+    // Function parameters
+    fnParameters: ($) => parens(optional(commaSep1($.fnParameter))),
+    fnParameter: ($) =>
+      prec.right(
+        seq(
+          field("name", $.identifier),
+          optional(seq(":", field("type", $.type))),
+        ),
       ),
-    type_params: ($) => seq("[", commaSep1($.type_param), optional(","), "]"),
+    type_params: ($) => brackets(commaSep1($.type_param), optional(",")),
     type_param: ($) =>
       seq(
         field("name", $.identifier),
@@ -110,24 +150,49 @@ module.exports = grammar({
       ),
     // Expressions (baseline similar to Python precedence/calls/index/attr)
     expression: ($) =>
-      choice($.lambda, $.conditional_expression, $.disjunction),
+      choice(
+        $.literal,
+        $.lambda,
+        $.conditional_expression,
+        $.disjunction,
+        $.identifier,
+        $.call_expression,
+        $.pipeline_expression,
+        $.eff_handle_block,
+      ),
+
+    pipeline_expression: ($) =>
+      prec.right(
+        seq(
+          field("left", $.expression),
+          "|>",
+          field("right", choice($.qualified_name, $.call_expression)),
+        ),
+      ),
+    call_expression: ($) =>
+      prec(
+        1,
+        seq(
+          field("function", choice($.identifier, parens($.expression))),
+          parens(optional(field("arguments", $.argument_list))),
+        ),
+      ),
     lambda: ($) =>
       prec.right(
         seq(
           "lambda",
-          optional($.parameters),
+          optional($.fnParameters),
           "=>",
           field("body", $.expression),
         ),
       ),
     conditional_expression: ($) =>
       prec.right(seq($.disjunction, "if", $.disjunction, "else", $.expression)),
-    disjunction: ($) => leftBinary($, "or", $.conjunction),
-    conjunction: ($) => leftBinary($, "and", $.inversion),
+    disjunction: ($) => prec.left(binary($, "or", $.conjunction)),
+    conjunction: ($) => prec.left(binary($, "and", $.inversion)),
     inversion: ($) => seq("not", $.inversion),
     argument_list: ($) =>
-      seq(
-        "(",
+      parens(
         optional(
           commaSep1(
             choice(
@@ -136,10 +201,9 @@ module.exports = grammar({
               $.double_star_argument,
               $.keyword_argument,
             ),
+            undefined,
           ),
         ),
-        optional(","),
-        ")",
       ),
     star_argument: ($) => seq("*", $.expression),
     double_star_argument: ($) => seq("**", $.expression),
@@ -157,14 +221,47 @@ module.exports = grammar({
       ),
     // type application with one or more type arguments, e.g., List[Int], Map[String, Int]
     applied_type: ($) =>
-      seq($.type_name, seq("[", commaSep1($.type_param), optional(","), "]")),
+      seq($.type_name, brackets(commaSep1($.type_param), optional(","))),
+    // Simple type name (possibly qualified), e.g., Int, String, MyModule.MyType
     type_name: ($) => prec(2, $.qualified_name),
-    type_tuple: ($) => seq("(", commaSep1($.type), optional(","), ")"),
-    type_arrow: ($) => prec(1, sep2($.type, "->")),
+    type_tuple: ($) => parens(commaSep1($.type, undefined)),
+    type_arrow: ($) =>
+      prec.right(
+        seq(
+          sep2($.type, "->", false, prec.right),
+          optional(seq("\\", field("effect", $.eff_expr))),
+        ),
+      ),
     type_record: ($) =>
-      seq("{", optional(commaSep1($.type_record_field)), optional(","), "}"),
-    type_record_field: ($) => seq($.identifier, ":", $.type),
-    type_group: ($) => seq("(", $.type, ")"),
+      braces(optional(commaSep1($.type_record_field, undefined))),
+    type_record_field: ($) =>
+      seq(field("name", $.identifier), "=", field("type", $.type)),
+    type_group: ($) => parens($.type),
+
+    eff_expr: ($) =>
+      prec.left(
+        choice(
+          $.qualified_name,
+          braces(commaSep1($.qualified_name, false)),
+          binary($, "+", $.eff_expr),
+          parens(binary($, "-", $.eff_expr)),
+        ),
+      ),
+    eff_handle_block: ($) =>
+      seq(
+        "run",
+        braces($.body),
+        "with",
+        choice(
+          $.qualified_name,
+          seq(
+            "handler",
+            $.qualified_name,
+            braces(repeat1($.def_decl_with_body)),
+          ),
+        ),
+      ),
+    body: ($) => seq(repeat(seq($.expression, ";")), $.expression),
     // Names
     qualified_name: ($) => sep1($.identifier, "."),
     identifier: (_) => /[A-Za-z_][A-Za-z0-9_]*/,
@@ -184,6 +281,14 @@ module.exports = grammar({
     // Misc helpers
     semi: (_) => ";",
     comment: (_) => token(choice(seq("//", /.*/), seq("/*", /.*/, "*/"))),
+
+    literal: ($) => choice($.number, $.string, $.char, $.boolean),
+
+    // Literals (basic)
+    number: (_) => /\d+(_\d+)*/,
+    string: ($) => surr('"', '"', repeat(choice(/[^"\\]/, /\\./))),
+    char: ($) => surr("'", "'", choice(/[^'\\]/, /\\./)),
+    boolean: (_) => choice("true", "false"),
   },
 });
 
@@ -198,33 +303,47 @@ function moddedSeq($, ...rules) {
   );
 }
 
-function sep1(rule, separator, precedence = (x) => x) {
-  return precedence(seq(rule, repeat(precedence(seq(separator, rule)))));
+function surr(open, close, ...outerRules) {
+  return seq(open, ...outerRules, close);
 }
 
-function sep2(rule, separator, precedence = (x) => x) {
-  return precedence(seq(rule, repeat1(precedence(seq(separator, rule)))));
+function sep1(rule, separator, trailing = false, precedence = (x) => x) {
+  const rules = [rule, repeat(precedence(seq(separator, rule)))];
+  switch (trailing) {
+    case true: {
+      rules.push(separator);
+      break;
+    }
+    case false:
+      break;
+    default: {
+      rules.push(optional(separator));
+    }
+  }
+  return precedence(seq(...rules));
 }
 
-function commaSep1(rule, precedence = (x) => x) {
-  return sep1(rule, ",");
+function sep2(rule, separator, trailing = false, precedence = (x) => x) {
+  const rules = [rule, repeat1(precedence(seq(separator, rule)))];
+  switch (trailing) {
+    case true: {
+      rules.push(separator);
+      break;
+    }
+    case false:
+      break;
+    default: {
+      rules.push(optional(separator));
+    }
+  }
+  return precedence(seq(...rules));
 }
 
-// Left-assoc binary with keyword operator
-function leftBinary($, op, next) {
-  return prec.left(seq(next, repeat(seq(op, next))));
+function commaSep1(rule, trailing = false, precedence = (x) => x) {
+  return sep1(rule, ",", trailing, precedence);
 }
 
-// Left-assoc binary with symbolic operator(s)
-function leftBinarySym($, opToken, next) {
-  return prec.left(seq(next, repeat(seq(opToken, next))));
+// binary operation
+function binary($, op, next) {
+  return seq(field("left", next), field("operator", op), field("right", next));
 }
-
-// What next
-// - Replace the placeholder keyword/modifier/effect/trait names with the exact Flix keywords and rules.
-// - Flesh out expression forms specific to Flix (e.g., let/let*; match/case syntax; record ops; array/struct ops) using concrete syntax (the AST list you provided enumerates IR ops; choose the surface equivalents).
-// - Tighten identifier and literal tokenization to match Flix (runes/char, big-int/dec, regex literals, etc.).
-// - Add tests in corpus/ to drive incremental fixes.
-// - If Flix uses layout/indentation rules, add an external scanner (like Python’s) to manage newlines/blocks.
-
-// If you share the exact concrete syntax reference (lexical spec and BNF/PEG), I can refine this to a much closer, working grammar and add missing constructs (match patterns, choose, effects handling, etc.).
