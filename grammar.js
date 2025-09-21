@@ -46,17 +46,17 @@ module.exports = grammar({
     declaration: ($) =>
       choice(
         $.mod_decl,
-        $.def_decl,
-        $.enum_decl,
+        $.function_declaration,
+        $.enum_definition,
         $.struct_decl,
-        $.trait_decl,
-        $.trait_instance_decl,
+        $.trait_definition,
+        $.trait_instance,
         $.effect_decl,
         $.type_alias_decl,
       ),
     mod_decl: ($) =>
       moddedSeq($, "mod", field("name", $.identifier), braces(repeat($._unit))),
-    enum_decl: ($) =>
+    enum_definition: ($) =>
       moddedSeq(
         $,
         "enum",
@@ -88,7 +88,7 @@ module.exports = grammar({
         field("type", $.type),
       ),
 
-    trait_decl: ($) =>
+    trait_definition: ($) =>
       moddedSeq(
         $,
         "trait",
@@ -115,7 +115,7 @@ module.exports = grammar({
         field("name", $.path),
         optional(brackets(field("implementing_type", $.identifier))),
       ),
-    trait_instance_decl: ($) =>
+    trait_instance: ($) =>
       moddedSeq(
         $,
         "instance",
@@ -123,7 +123,9 @@ module.exports = grammar({
         brackets(field("for_type", $._type_ref)),
         optional(seq("with", $.applied_type)),
         optional($.trait_constraint),
-        braces(seq(repeat($.trait_associated_item), repeat($.def_decl))),
+        braces(
+          seq(repeat($.trait_associated_item), repeat($.function_declaration)),
+        ),
       ),
     trait_constraint: ($) =>
       seq("where", field("left", $.applied_type), "~", field("right", $.type)),
@@ -158,7 +160,7 @@ module.exports = grammar({
         optional(seq(":", field("result_type", $.type))),
         optional(seq("\\", field("effect", $.eff_expr))),
       ),
-    def_decl: ($) =>
+    function_declaration: ($) =>
       seq(
         $.signature,
         "=",
@@ -241,13 +243,14 @@ module.exports = grammar({
       seq(field("name", $.identifier), "=", field("value", $.expression)),
 
     // Types (basic surface syntax)
-    type: ($) => choice($._type_ref, $.type_arrow, $.type_tuple, $.type_record),
     _type_ref: ($) => choice($.path, $.applied_type),
+
+    type: ($) => choice($._type_ref, $.type_arrow, $.type_tuple, $.type_record),
     // Type application with one or more type arguments, e.g., List[Int], Map[String, Int]
     applied_type: ($) =>
       seq(
         field("type", $.path),
-        brackets(field("parameters", commaSep1($.type, undefined))),
+        field("parameters", brackets(commaSep1($.type, undefined))),
       ),
     // Simple type name (possibly qualified), e.g., Int, String, MyModule.MyType
     type_tuple: ($) => parens(commaSep1($.type, undefined)),
@@ -277,9 +280,13 @@ module.exports = grammar({
         "run",
         braces($.body),
         "with",
-        choice($.path, seq("handler", $.path, braces(repeat1($.def_decl)))),
+        choice(
+          $.path,
+          seq("handler", $.path, braces(repeat1($.function_declaration))),
+        ),
       ),
     body: ($) => seq(repeat(seq($.expression, ";")), $.expression),
+
     // Names
     path: ($) => sep1($.identifier, "."),
     identifier: (_) => /[A-Za-z_][A-Za-z0-9_]*/,
@@ -325,7 +332,7 @@ module.exports = grammar({
 
 function moddedSeq($, ...rules) {
   return seq(
-    optional($.doc_comment),
+    repeat($.doc_comment),
     repeat($.annotation),
     repeat($.modifier),
     ...rules,
