@@ -37,9 +37,6 @@ pub lawful trait Applicative[m : Type -> Type] with Functor[m] {
     ///
     pub def map5(f: t1 -> t2 -> t3 -> t4 -> t5 -> r \ ef, x1: m[t1], x2: m[t2], x3: m[t3], x4: m[t4], x5: m[t5]): m[r] \ ef = Applicative.ap(Applicative.map4(f, x1, x2, x3, x4), x5)
 
-    ///
-    /// Applying the identity function wrapped into an applicative preserves every applicative value.
-    ///
     law identity: forall(x: m[a]) with Eq[m[a]] Applicative.ap(Applicative.point(identity), x) == x
 
     ///

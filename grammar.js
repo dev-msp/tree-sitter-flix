@@ -25,6 +25,27 @@ module.exports = grammar({
     // [$.declaration, $.statement],
     // [$.set, $.dict],
     [$.string, $.interpolated_string],
+    [$.binary_expression],
+  ],
+
+  precedences: ($) => [
+    [
+      "composition",
+      "unary_void",
+      "binary_exp",
+      "binary_times",
+      "binary_plus",
+      "binary_shift",
+      "binary_compare",
+      "binary_relation",
+      "binary_equality",
+      "bitwise_and",
+      "bitwise_xor",
+      "bitwise_or",
+      "logical_and",
+      "logical_or",
+    ],
+    [$.body, $.expression, $.pipeline_expression, $.keyword_argument],
   ],
 
   word: ($) => $.identifier,
@@ -94,8 +115,14 @@ module.exports = grammar({
         "trait",
         field("name", $.identifier),
         optional(field("type_params", $.type_params)),
+        optional(seq("with", $.applied_type)),
         braces(
-          seq(optional(repeat($.trait_associated_item)), repeat($.signature)),
+          seq(
+            optional(repeat($.trait_associated_item)),
+            repeat(
+              choice($.trait_law, seq($.signature, optional(seq("=", $.body)))),
+            ),
+          ),
         ),
       ),
     trait_associated_item: ($) =>
@@ -110,11 +137,19 @@ module.exports = grammar({
           ),
         ),
       ),
-    associated_effect_ref: ($) =>
-      seq(
-        field("name", $.path),
-        optional(brackets(field("implementing_type", $.identifier))),
+
+    trait_law: ($) =>
+      moddedSeq(
+        $,
+        "law",
+        field("name", $.identifier),
+        ":",
+        "forall",
+        parens(commaSep1($.type_param, undefined)),
+        optional(seq("with", $.applied_type)),
+        $.expression,
       ),
+
     trait_instance: ($) =>
       moddedSeq(
         $,
@@ -199,16 +234,53 @@ module.exports = grammar({
 
     // Expressions
     expression: ($) =>
-      choice(
-        $.interpolated_string,
-        $.literal,
-        $.lambda,
-        $.identifier,
-        $.call_expression,
-        $.pipeline_expression,
-        $.eff_handle_block,
+      prec.left(
+        choice(
+          $.interpolated_string,
+          $.literal,
+          $.path,
+          $.call_expression,
+          $.pipeline_expression,
+          $.binary_expression,
+          $.eff_handle_block,
+        ),
       ),
 
+    binary_expression: ($) =>
+      choice(
+        ...[
+          [">>", "composition"],
+          ["&&", "logical_and"],
+          ["||", "logical_or"],
+          [">>", "binary_shift"],
+          [">>>", "binary_shift"],
+          ["<<", "binary_shift"],
+          ["&", "bitwise_and"],
+          ["^", "bitwise_xor"],
+          ["|", "bitwise_or"],
+          ["+", "binary_plus"],
+          ["-", "binary_plus"],
+          ["*", "binary_times"],
+          ["/", "binary_times"],
+          ["%", "binary_times"],
+          ["**", "binary_exp", "right"],
+          ["<", "binary_relation"],
+          ["<=", "binary_relation"],
+          ["==", "binary_equality"],
+          ["!=", "binary_equality"],
+          [">=", "binary_relation"],
+          [">", "binary_relation"],
+        ].map(([operator, precedence, associativity]) =>
+          (associativity === "right" ? prec.right : prec.left)(
+            precedence,
+            seq(
+              field("left", $.expression),
+              field("operator", operator),
+              field("right", $.expression),
+            ),
+          ),
+        ),
+      ),
     pipeline_expression: ($) => prec.right(binary($, "|>", $.expression)),
     call_expression: ($) =>
       prec(
@@ -216,15 +288,6 @@ module.exports = grammar({
         seq(
           field("function", choice($.path, parens($.expression))),
           field("arguments", $.argument_list),
-        ),
-      ),
-    lambda: ($) =>
-      prec.right(
-        seq(
-          "lambda",
-          optional($._fn_parameters),
-          "=>",
-          field("body", $.expression),
         ),
       ),
     argument_list: ($) =>
