@@ -1,7 +1,6 @@
-instance Readable[BufReader[a, t, rr]] with Readable[t] where Readable.Elm[t] ~ a {
+instance Collection[Set[a]] with Order[a] {
     type Elm = a
-    type Aef = rr + Readable.Aef[t]
-
-    pub def read(buffer: Array[a, rb], bufReader: BufReader[a, t, rr]): Result[IoError, Int32] \ rb + rr + Readable.Aef[t] =
-        BufReader.read(buffer, bufReader) |> foobar |> 3.0
+    pub def empty(): Set[a] = Set.empty()
+    pub def insert(x: a, c: Set[a]): Set[a] = Set.insert(x, c)
+    pub def toList(c: Set[a]): List[a] = Set.toList(c)
 }
