@@ -235,28 +235,19 @@ module.exports = grammar({
         $.interpolated_string,
         $.literal,
         $.lambda,
-        $.conditional_expression,
-        $.disjunction,
         $.identifier,
         $.call_expression,
         $.pipeline_expression,
         $.eff_handle_block,
       ),
 
-    pipeline_expression: ($) =>
-      prec.right(
-        seq(
-          field("left", $.expression),
-          "|>",
-          field("right", choice($.qualified_name, $.call_expression)),
-        ),
-      ),
+    pipeline_expression: ($) => prec.right(binary($, "|>", $.expression)),
     call_expression: ($) =>
       prec(
         1,
         seq(
-          field("function", choice($.identifier, parens($.expression))),
-          parens(optional(field("arguments", $.argument_list))),
+          field("function", choice($.qualified_name, parens($.expression))),
+          field("arguments", $.argument_list),
         ),
       ),
     lambda: ($) =>
@@ -268,27 +259,18 @@ module.exports = grammar({
           field("body", $.expression),
         ),
       ),
-    conditional_expression: ($) =>
-      prec.right(seq($.disjunction, "if", $.disjunction, "else", $.expression)),
-    disjunction: ($) => prec.left(binary($, "or", $.conjunction)),
-    conjunction: ($) => prec.left(binary($, "and", $.inversion)),
-    inversion: ($) => seq("not", $.inversion),
     argument_list: ($) =>
       parens(
         optional(
           commaSep1(
             choice(
-              $.expression,
-              $.star_argument,
-              $.double_star_argument,
+              seq(optional(choice("*", "**")), $.expression),
               $.keyword_argument,
             ),
             undefined,
           ),
         ),
       ),
-    star_argument: ($) => seq("*", $.expression),
-    double_star_argument: ($) => seq("**", $.expression),
     keyword_argument: ($) =>
       seq(field("name", $.identifier), "=", field("value", $.expression)),
     // Types (basic surface syntax)
@@ -378,7 +360,7 @@ module.exports = grammar({
     },
 
     // Literals (basic)
-    number: (_) => /\d+(_\d+)*/,
+    number: (_) => /\d+(_\d+)*(\.\d*)?/,
     string: (_) => surr('"', '"', repeat(choice(/[^"\\]/, /\\./))),
     char: (_) => surr("'", "'", choice(/[^'\\]/, /\\./)),
     boolean: (_) => choice("true", "false"),
