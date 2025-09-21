@@ -1,17 +1,6 @@
-// I can generate a first-cut Tree‑sitter grammar.js for Flix that follows the structure and operator/precedence style used by tree-sitter-python. However, a full, correct grammar requires decisions that aren’t fully determined by the AST-notation you provided (e.g., concrete tokenization of identifiers, keywords, literals, string rules, comments, newlines/indentation strategy, etc.). Below is a practical starting point you can drop into a Tree‑sitter package and iterate on.
-
-// Notes and assumptions:
-// - Flix syntax assumed is closer to ML/Scala-style rather than Python (no offside/indent-sensitive layout). We therefore do not use external indent/dedent/newline tokens like Python’s grammar.
-// - Identifiers, keywords, and literals are sketched; you will likely refine them to match Flix’s actual lexer rules.
-// - The AST sections you gave (Kinded/Lifted/Reduced/etc.) look like IR nodes, not surface syntax. The grammar below targets a plausible surface language (defs, enums, traits, effects, instances, expressions, types, patterns). You may need to adjust to actual Flix concrete syntax.
-// - Precedences mirror Python’s table to give you a working baseline for binary/unary ops and calls/member access.
-// - Comments: // line and /* ... */ block.
-// - Strings: basic double-quoted strings; extend as needed.
-// - This is intentionally modular and incomplete in some constructs; fill in missing pieces and adjust keyword lists to the real Flix language.
-
 /**
  * @file Flix grammar for tree-sitter
- * @author msp
+ * @author dev-msp
  * @license MIT
  */
 
@@ -19,6 +8,8 @@
 // @ts-check
 
 const parens = (...rules) => surr("(", ")", ...rules);
+const parensOptional = (...rules) =>
+  choice(surr("(", ")", ...rules), seq(...rules));
 const brackets = (...rules) => surr("[", "]", ...rules);
 const braces = (...rules) => surr("{", "}", ...rules);
 
@@ -30,13 +21,13 @@ module.exports = grammar({
   conflicts: ($) => [
     // [$.primary_expression, $.pattern],
     // [$.type, $.pattern],
-    // [$.trait_constraint, $.type_name],
+    // [$.trait_constraint, $.qualified_name],
     // [$.declaration, $.statement],
     // [$.set, $.dict],
+    [$.string, $.interpolated_string],
     [$.type_tuple, $.type_group],
-    [$.type_param, $.type_arrow],
-    [$.type_record_field, $.type_arrow],
-    [$.eff_expr, $.def_decl],
+    [$.eff_expr, $.associated_effect_ref],
+    [$.trait_associated_effect_decl, $.qualified_name],
   ],
 
   word: ($) => $.identifier,
@@ -60,7 +51,7 @@ module.exports = grammar({
         $.mod_decl,
         $.def_decl_with_body,
         $.enum_decl,
-        // $.struct_decl,
+        $.trait_decl,
         $.effect_decl,
         $.type_alias_decl,
       ),
@@ -79,10 +70,63 @@ module.exports = grammar({
       seq(
         "case",
         field("name", $.identifier),
-        optional(field("params", parens(commaSep1($.type_name)))),
+        optional(field("params", parens(commaSep1($.qualified_name)))),
         optional(seq(":", field("result_type", $.type))),
       ),
-    // struct_decl: ($) =>
+    trait_decl: ($) =>
+      moddedSeq(
+        $,
+        "trait",
+        field("name", $.identifier),
+        optional(field("type_params", $.type_params)),
+        braces(
+          seq(
+            optional(
+              repeat(
+                choice(
+                  $.trait_associated_type_decl,
+                  $.trait_associated_effect_decl,
+                ),
+              ),
+            ),
+            repeat($.def_decl),
+          ),
+        ),
+      ),
+
+    trait_associated_type_decl: ($) =>
+      seq(
+        "type",
+        field("name", $.identifier),
+        optional(seq(":", field("bound", $.type))),
+        optional(seq("=", field("default", $.type))),
+      ),
+
+    associated_effect_ref: ($) =>
+      seq(
+        field("name", $.qualified_name),
+        optional(brackets(field("implementing_type", $.identifier))),
+      ),
+
+    trait_associated_effect_decl: ($) =>
+      seq(
+        "type",
+        field("name", $.identifier),
+        ":",
+        $.identifier,
+        optional(
+          prec.left(
+            seq(
+              "=",
+              choice(
+                $.associated_effect_ref,
+                binary($, "+", $.associated_effect_ref),
+              ),
+            ),
+          ),
+        ),
+      ),
+
     type_alias_decl: ($) =>
       moddedSeq(
         $,
@@ -107,7 +151,7 @@ module.exports = grammar({
         $,
         "def",
         field("name", $.identifier),
-        field("params", $.fnParameters),
+        field("params", $._fn_parameters),
         optional(seq(":", field("result_type", $.type))),
       ),
     def_decl: ($) =>
@@ -119,8 +163,8 @@ module.exports = grammar({
         field(
           "body",
           choice(
-            braces(repeat1(seq($.expression, ";"))),
-            repeat1($.expression),
+            braces(seq(repeat(seq($.expression, $._semi)), $.expression)),
+            seq(repeat(seq($.expression, $._semi)), $.expression),
           ),
         ),
       ),
@@ -130,18 +174,18 @@ module.exports = grammar({
         choice("use", "import"),
         $.qualified_name,
         optional(seq("as", $.identifier)),
-        optional($.semi),
+        optional($._semi),
       ),
     // Function parameters
-    fnParameters: ($) => parens(optional(commaSep1($.fnParameter))),
-    fnParameter: ($) =>
+    _fn_parameters: ($) => parens(optional(commaSep1($.fn_parameter))),
+    fn_parameter: ($) =>
       prec.right(
         seq(
           field("name", $.identifier),
           optional(seq(":", field("type", $.type))),
         ),
       ),
-    type_params: ($) => brackets(commaSep1($.type_param), optional(",")),
+    type_params: ($) => brackets(commaSep1($.type_param, undefined)),
     type_param: ($) =>
       seq(
         field("name", $.identifier),
@@ -151,6 +195,7 @@ module.exports = grammar({
     // Expressions (baseline similar to Python precedence/calls/index/attr)
     expression: ($) =>
       choice(
+        $.interpolated_string,
         $.literal,
         $.lambda,
         $.conditional_expression,
@@ -181,7 +226,7 @@ module.exports = grammar({
       prec.right(
         seq(
           "lambda",
-          optional($.fnParameters),
+          optional($._fn_parameters),
           "=>",
           field("body", $.expression),
         ),
@@ -214,16 +259,15 @@ module.exports = grammar({
       choice(
         $.type_arrow,
         $.applied_type,
-        $.type_name,
+        $.qualified_name,
         $.type_tuple,
         $.type_group,
         $.type_record,
       ),
     // type application with one or more type arguments, e.g., List[Int], Map[String, Int]
     applied_type: ($) =>
-      seq($.type_name, brackets(commaSep1($.type_param), optional(","))),
+      seq($.qualified_name, brackets(commaSep1($.type, undefined))),
     // Simple type name (possibly qualified), e.g., Int, String, MyModule.MyType
-    type_name: ($) => prec(2, $.qualified_name),
     type_tuple: ($) => parens(commaSep1($.type, undefined)),
     type_arrow: ($) =>
       prec.right(
@@ -238,13 +282,14 @@ module.exports = grammar({
       seq(field("name", $.identifier), "=", field("type", $.type)),
     type_group: ($) => parens($.type),
 
+    _eff_ref: ($) => prec(1, choice($.qualified_name, $.associated_effect_ref)),
     eff_expr: ($) =>
       prec.left(
         choice(
-          $.qualified_name,
-          braces(commaSep1($.qualified_name, false)),
-          binary($, "+", $.eff_expr),
-          parens(binary($, "-", $.eff_expr)),
+          $._eff_ref,
+          braces(commaSep1($._eff_ref, false)),
+          parensOptional(binary($, "+", $.eff_expr)),
+          parensOptional(binary($, "-", $.eff_expr)),
         ),
       ),
     eff_handle_block: ($) =>
@@ -279,15 +324,22 @@ module.exports = grammar({
     annotation: ($) => seq("@", $.identifier, optional($.argument_list)),
     doc_comment: (_) => token(seq("///", /.*/)),
     // Misc helpers
-    semi: (_) => ";",
+    _semi: (_) => ";",
     comment: (_) => token(choice(seq("//", /.*/), seq("/*", /.*/, "*/"))),
 
     literal: ($) => choice($.number, $.string, $.char, $.boolean),
 
+    interpolated_string: ($) => {
+      const esc = /\\./;
+      const interp = surr("${", "}", $.expression);
+      const content = repeat1(choice(interp, esc, /[^"\\$]+/, /\\\{/, /\\\}/));
+      return surr('"', '"', content);
+    },
+
     // Literals (basic)
     number: (_) => /\d+(_\d+)*/,
-    string: ($) => surr('"', '"', repeat(choice(/[^"\\]/, /\\./))),
-    char: ($) => surr("'", "'", choice(/[^'\\]/, /\\./)),
+    string: (_) => surr('"', '"', repeat(choice(/[^"\\]/, /\\./))),
+    char: (_) => surr("'", "'", choice(/[^'\\]/, /\\./)),
     boolean: (_) => choice("true", "false"),
   },
 });
