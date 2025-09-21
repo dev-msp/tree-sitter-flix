@@ -1,13 +1,7 @@
-trait Provider[t] {
-    type Model
-    type Aef: Eff
-    type Kef: Eff = Environment
-    type Ef: Eff = Provider.Aef[t] + Provider.Kef[t]
+instance Readable[BufReader[a, t, rr]] with Readable[t] where Readable.Elm[t] ~ a {
+    type Elm = a
+    type Aef = rr + Readable.Aef[t]
 
-    pub def apiBase(self: t): String
-    pub def apiKey(self: t): Option[String] \ Provider.Kef[t]
-    pub def listModels(self: t): IoResult[List[Provider.Model[t]]] \ Provider.Ef[t]
-    pub def generate(self: t, params: GenerateRequest): String \ Provider.Ef[t]
-
-    pub def handle(self: t, f: Unit -> b \ ef): b \ (ef - Generate) + Provider.Ef[t]
+    pub def read(buffer: Array[a, rb], bufReader: BufReader[a, t, rr]): Result[IoError, Int32] \ rb + rr + Readable.Aef[t] =
+        BufReader.read(buffer, bufReader)
 }

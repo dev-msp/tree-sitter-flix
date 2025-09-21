@@ -51,6 +51,7 @@ module.exports = grammar({
         $.mod_decl,
         $.def_decl_with_body,
         $.enum_decl,
+        $.struct_decl,
         $.trait_decl,
         $.effect_decl,
         $.type_alias_decl,
@@ -72,6 +73,21 @@ module.exports = grammar({
         field("name", $.identifier),
         optional(field("params", parens(commaSep1($.qualified_name)))),
         optional(seq(":", field("result_type", $.type))),
+      ),
+    struct_decl: ($) =>
+      moddedSeq(
+        $,
+        "struct",
+        field("name", $.identifier),
+        optional(field("type_params", $.type_params)),
+        braces(commaSep1($.struct_field, false)),
+      ),
+    struct_field: ($) =>
+      seq(
+        optional($.modifier),
+        field("name", $.identifier),
+        ":",
+        field("type", $.type),
       ),
     trait_decl: ($) =>
       moddedSeq(
@@ -127,6 +143,27 @@ module.exports = grammar({
         ),
       ),
 
+    trait_instance_decl: ($) =>
+      moddedSeq(
+        $,
+        "instance",
+        field("trait", $.qualified_name),
+        brackets(field("for_type", choice($.qualified_name, $.applied_type))),
+        optional(seq("with", $.applied_type)),
+        braces(
+          seq(
+            optional(
+              repeat(
+                choice(
+                  $.trait_associated_type_decl,
+                  $.trait_associated_effect_decl,
+                ),
+              ),
+            ),
+            repeat($.def_decl),
+          ),
+        ),
+      ),
     type_alias_decl: ($) =>
       moddedSeq(
         $,
@@ -313,6 +350,7 @@ module.exports = grammar({
     // Modifiers, annotations, docs
     modifier: (_) =>
       choice(
+        "mut",
         "pub",
         "final",
         "inline",
@@ -325,7 +363,10 @@ module.exports = grammar({
     doc_comment: (_) => token(seq("///", /.*/)),
     // Misc helpers
     _semi: (_) => ";",
-    comment: (_) => token(choice(seq("//", /.*/), seq("/*", /.*/, "*/"))),
+    comment: (_) =>
+      token(
+        choice(seq("//", /.*/), seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
+      ),
 
     literal: ($) => choice($.number, $.string, $.char, $.boolean),
 
