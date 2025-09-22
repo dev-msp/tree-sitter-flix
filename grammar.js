@@ -24,7 +24,7 @@ module.exports = grammar({
 
   extras: ($) => [/\s+/, $.comment],
 
-  inline: ($) => [$.ref, $.type_ref],
+  inline: ($) => [$.ref, $.type_ref, $.semi],
 
   conflicts: ($) => [
     [$.string, $.interpolated_string],
@@ -198,8 +198,8 @@ module.exports = grammar({
         field(
           "body",
           choice(
-            braces(seq(repeat(seq($.expression, $._semi)), $.expression)),
-            seq(repeat(seq($.expression, $._semi)), $.expression),
+            braces(seq(repeat(seq($.expression, $.semi)), $.expression)),
+            seq(repeat(seq($.expression, $.semi)), $.expression),
           ),
         ),
       ),
@@ -209,7 +209,7 @@ module.exports = grammar({
         choice("use", "import"),
         $.path,
         optional(seq("as", $.identifier)),
-        optional($._semi),
+        optional($.semi),
       ),
     // Function parameters
     _fn_parameters: ($) => parens(optional(commaSep1($.fn_parameter))),
@@ -362,7 +362,7 @@ module.exports = grammar({
     annotation: ($) => seq("@", $.identifier, optional($.argument_list)),
     doc_comment: (_) => token(repeat1(seq("///", /.*/, /\s*/))),
     // Misc helpers
-    _semi: (_) => ";",
+    semi: (_) => ";",
     comment: (_) =>
       token(
         choice(seq("//", /[^/].*/), seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
