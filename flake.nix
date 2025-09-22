@@ -23,6 +23,7 @@
             tree-sitter
             bun
             python3
+            graphviz
           ];
         };
       }

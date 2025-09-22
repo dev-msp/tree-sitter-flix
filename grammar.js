@@ -12,6 +12,8 @@ const parensOptional = (...rules) =>
   choice(surr("(", ")", ...rules), seq(...rules));
 const brackets = (...rules) => surr("[", "]", ...rules);
 const braces = (...rules) => surr("{", "}", ...rules);
+const bracesOptional = (...rules) =>
+  choice(surr("{", "}", ...rules), seq(...rules));
 
 module.exports = grammar({
   name: "flix",
@@ -30,6 +32,7 @@ module.exports = grammar({
 
   precedences: ($) => [
     [
+      "composition",
       "unary_void",
       "binary_exp",
       "binary_times",
@@ -43,10 +46,9 @@ module.exports = grammar({
       "bitwise_or",
       "logical_and",
       "logical_or",
-      "composition",
     ],
     [$.body, $.expression, $.pipeline_expression, $.keyword_argument],
-    [$.expression, $.type, $._type_ref],
+    [$.binary_expression, $.fn_literal, $.tuple],
   ],
 
   word: ($) => $.identifier,
@@ -237,7 +239,7 @@ module.exports = grammar({
         $.call_expression,
         $.binary_expression,
         $.tuple,
-        $.arrow,
+        $.fn_literal,
         $.path,
         $.literal,
         $.interpolated_string,
@@ -280,7 +282,15 @@ module.exports = grammar({
           ),
         ),
       ),
-    tuple: ($) => parens(commaSep1($.expression, undefined)),
+    fn_literal: ($) =>
+      prec.left(
+        seq(
+          field("left", $.expression),
+          "->",
+          field("right", choice(braces($.body), $.expression)),
+        ),
+      ),
+    tuple: ($) => parens(sep2($.identifier, ",", undefined)),
     pipeline_expression: ($) => prec.right(binary($, "|>", $.expression)),
     call_expression: ($) =>
       prec(
