@@ -360,7 +360,7 @@ module.exports = grammar({
         "sealed",
       ),
     annotation: ($) => seq("@", $.identifier, optional($.argument_list)),
-    doc_comment: (_) => token(repeat1(seq(/\s*/, "///", /.*/))),
+    doc_comment: (_) => token(repeat1(seq("///", /.*/, /\s*/))),
     // Misc helpers
     _semi: (_) => ";",
     comment: (_) =>
