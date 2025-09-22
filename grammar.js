@@ -28,11 +28,11 @@ module.exports = grammar({
     // [$.set, $.dict],
     [$.string, $.interpolated_string],
     [$.binary_expression],
+    [$.binary_expression, $.pipeline_expression],
   ],
 
   precedences: ($) => [
     [
-      "composition",
       "unary_void",
       "binary_exp",
       "binary_times",
@@ -46,9 +46,9 @@ module.exports = grammar({
       "bitwise_or",
       "logical_and",
       "logical_or",
+      "application",
+      "composition",
     ],
-    [$.body, $.expression, $.pipeline_expression, $.keyword_argument],
-    [$.binary_expression, $.fn_literal, $.tuple],
   ],
 
   word: ($) => $.identifier,
@@ -65,7 +65,7 @@ module.exports = grammar({
   rules: {
     // Top
     source_file: ($) => repeat($._unit),
-    _unit: ($) => choice($.use_or_import, $.declaration),
+    _unit: ($) => choice($.use_or_import, $.declaration, $.expression),
     // Declarations (rough surface-syntax sketch)
     declaration: ($) =>
       choice(
@@ -239,7 +239,6 @@ module.exports = grammar({
         $.call_expression,
         $.binary_expression,
         $.tuple,
-        $.fn_literal,
         $.path,
         $.literal,
         $.interpolated_string,
@@ -250,12 +249,10 @@ module.exports = grammar({
     binary_expression: ($) =>
       choice(
         ...[
+          ["->", "application"],
           [">>", "composition"],
           ["&&", "logical_and"],
           ["||", "logical_or"],
-          [">>", "binary_shift"],
-          [">>>", "binary_shift"],
-          ["<<", "binary_shift"],
           ["&", "bitwise_and"],
           ["^", "bitwise_xor"],
           ["|", "bitwise_or"],
@@ -282,14 +279,6 @@ module.exports = grammar({
           ),
         ),
       ),
-    fn_literal: ($) =>
-      prec.left(
-        seq(
-          field("left", $.expression),
-          "->",
-          field("right", choice(braces($.body), $.expression)),
-        ),
-      ),
     tuple: ($) => parens(sep2($.identifier, ",", undefined)),
     pipeline_expression: ($) => prec.right(binary($, "|>", $.expression)),
     call_expression: ($) =>
@@ -303,13 +292,7 @@ module.exports = grammar({
     argument_list: ($) =>
       parens(
         optional(
-          commaSep1(
-            choice(
-              seq(optional(choice("*", "**")), $.expression),
-              $.keyword_argument,
-            ),
-            undefined,
-          ),
+          commaSep1(choice($.expression, $.keyword_argument), undefined),
         ),
       ),
     keyword_argument: ($) =>
