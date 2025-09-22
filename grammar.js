@@ -7,32 +7,35 @@
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
 
+const makeWrapperOptional =
+  (fn) =>
+  (...rules) =>
+    choice(fn(...rules), seq(...rules));
+
 const parens = (...rules) => surr("(", ")", ...rules);
-const parensOptional = (...rules) =>
-  choice(surr("(", ")", ...rules), seq(...rules));
 const brackets = (...rules) => surr("[", "]", ...rules);
 const braces = (...rules) => surr("{", "}", ...rules);
-const bracesOptional = (...rules) =>
-  choice(surr("{", "}", ...rules), seq(...rules));
+
+const parensOptional = makeWrapperOptional(parens);
+const bracesOptional = makeWrapperOptional(braces);
 
 module.exports = grammar({
   name: "flix",
 
   extras: ($) => [/\s+/, $.comment],
 
+  inline: ($) => [$.ref, $.type_ref],
+
   conflicts: ($) => [
-    // [$.primary_expression, $.pattern],
-    // [$.type, $.pattern],
-    // [$.trait_constraint, $.path],
-    // [$.declaration, $.statement],
-    // [$.set, $.dict],
     [$.string, $.interpolated_string],
+    [$.expression, $.call_expression],
     [$.binary_expression],
-    [$.binary_expression, $.pipeline_expression],
   ],
 
   precedences: ($) => [
     [
+      "composition",
+      "application",
       "unary_void",
       "binary_exp",
       "binary_times",
@@ -46,26 +49,18 @@ module.exports = grammar({
       "bitwise_or",
       "logical_and",
       "logical_or",
-      "application",
-      "composition",
     ],
+    [$.body, $.expression, $.pipeline_expression, $.keyword_argument],
   ],
 
   word: ($) => $.identifier,
 
-  supertypes: ($) => [
-    $.declaration,
-    // $.statement,
-    $.expression,
-    // $.primary_expression,
-    $.type,
-    // $.pattern,
-  ],
+  supertypes: ($) => [$.declaration, $.expression, $.type],
 
   rules: {
     // Top
     source_file: ($) => repeat($._unit),
-    _unit: ($) => choice($.use_or_import, $.declaration, $.expression),
+    _unit: ($) => choice($.use_or_import, $.declaration),
     // Declarations (rough surface-syntax sketch)
     declaration: ($) =>
       choice(
@@ -132,11 +127,11 @@ module.exports = grammar({
       seq(
         "type",
         field("name", $.identifier),
-        optional(seq(":", field("bound", $._type_ref))),
+        optional(seq(":", field("bound", $.type_ref))),
         optional(
           seq(
             "=",
-            field("default", choice($.type, binary($, "+", $._type_ref))),
+            field("default", choice($.type, binary($, "+", $.type_ref))),
           ),
         ),
       ),
@@ -158,7 +153,7 @@ module.exports = grammar({
         $,
         "instance",
         field("trait", $.path),
-        brackets(field("for_type", $._type_ref)),
+        brackets(field("for_type", $.type_ref)),
         optional(seq("with", $.applied_type)),
         optional($.trait_constraint),
         braces(
@@ -235,15 +230,19 @@ module.exports = grammar({
 
     // Expressions
     expression: ($) =>
-      choice(
-        $.call_expression,
-        $.binary_expression,
-        $.tuple,
-        $.path,
-        $.literal,
-        $.interpolated_string,
-        $.pipeline_expression,
-        $.eff_handle_block,
+      prec.left(
+        choice(
+          $.interpolated_string,
+          $.literal,
+
+          $.identifier,
+          $.path,
+          $.call_expression,
+          $.tuple,
+          $.pipeline_expression,
+          $.binary_expression,
+          $.eff_handle_block,
+        ),
       ),
 
     binary_expression: ($) =>
@@ -279,13 +278,13 @@ module.exports = grammar({
           ),
         ),
       ),
-    tuple: ($) => parens(sep2($.identifier, ",", undefined)),
+    tuple: ($) => parens(sep2($.ref, ",", undefined)),
     pipeline_expression: ($) => prec.right(binary($, "|>", $.expression)),
     call_expression: ($) =>
       prec(
         1,
         seq(
-          field("function", choice($.path, parens($.expression))),
+          field("function", choice($.identifier, $.path, parens($.expression))),
           field("arguments", $.argument_list),
         ),
       ),
@@ -299,20 +298,23 @@ module.exports = grammar({
       seq(field("name", $.identifier), "=", field("value", $.expression)),
 
     // Types (basic surface syntax)
-    _ref: ($) => choice($.identifier, $.path),
-    _type_ref: ($) => choice($._ref, $.applied_type),
+    ref: ($) => choice($.identifier, $.path),
+    type_ref: ($) => choice($.ref, $.applied_type),
 
-    type: ($) => choice($._type_ref, $.arrow, $.type_record),
+    type: ($) => choice($.type_ref, $.arrow, $.type_record),
     // Type application with one or more type arguments, e.g., List[Int], Map[String, Int]
     applied_type: ($) =>
       seq(
-        field("type", $._ref),
+        field("type", $.ref),
         field("parameters", brackets(commaSep1($.type, undefined))),
       ),
     arrow: ($) =>
       prec.right(
+        "application",
         seq(
-          sep2($.type, "->", false, prec.right),
+          field("left", $.type),
+          "->",
+          field("right", $.type),
           optional(seq("\\", field("effect", $.eff_expr))),
         ),
       ),
@@ -324,8 +326,8 @@ module.exports = grammar({
     eff_expr: ($) =>
       prec.left(
         choice(
-          $._type_ref,
-          braces(commaSep1($._type_ref, false)),
+          $.type_ref,
+          braces(commaSep1($.type_ref, false)),
           parensOptional(binary($, "+", $.eff_expr)),
           parensOptional(binary($, "-", $.eff_expr)),
         ),
@@ -336,7 +338,7 @@ module.exports = grammar({
         braces($.body),
         "with",
         choice(
-          $.path,
+          $.ref,
           seq("handler", $.path, braces(repeat1($.function_declaration))),
         ),
       ),
@@ -358,7 +360,7 @@ module.exports = grammar({
         "sealed",
       ),
     annotation: ($) => seq("@", $.identifier, optional($.argument_list)),
-    doc_comment: (_) => token(seq("///", /.*/)),
+    doc_comment: (_) => token(repeat1(seq(/\s*/, "///", /.*/))),
     // Misc helpers
     _semi: (_) => ";",
     comment: (_) =>
