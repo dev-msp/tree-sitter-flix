@@ -27,9 +27,9 @@ module.exports = grammar({
   inline: ($) => [$.ref, $.type_ref, $.semi],
 
   conflicts: ($) => [
-    [$.string, $.interpolated_string],
     [$.expression, $.call_expression],
-    [$.binary_expression],
+    [$.binary_expression, $.body],
+    [$.body],
   ],
 
   precedences: ($) => [
@@ -192,17 +192,7 @@ module.exports = grammar({
         optional(seq("\\", field("effect", $.eff_expr))),
       ),
     function_declaration: ($) =>
-      seq(
-        $.signature,
-        "=",
-        field(
-          "body",
-          choice(
-            braces(seq(repeat(seq($.expression, $.semi)), $.expression)),
-            seq(repeat(seq($.expression, $.semi)), $.expression),
-          ),
-        ),
-      ),
+      seq($.signature, "=", field("body", bracesOptional($.body))),
     // Use/Import (simplified)
     use_or_import: ($) =>
       seq(
@@ -228,19 +218,26 @@ module.exports = grammar({
         optional(seq("=", field("default", $.type))),
       ),
 
+    parenthetical_expression: ($) => parens($.expression),
+
     // Expressions
     expression: ($) =>
       prec.left(
         choice(
-          $.interpolated_string,
+          $.parenthetical_expression,
           $.literal,
-
+          $.interpolated_string,
           $.identifier,
           $.path,
           $.call_expression,
           $.tuple,
           $.pipeline_expression,
           $.binary_expression,
+          $.if_expression,
+          $.foreach_expression,
+          $.datalog_expression,
+          $.inject_expression,
+          $.query_expression,
           $.eff_handle_block,
         ),
       ),
@@ -278,7 +275,8 @@ module.exports = grammar({
           ),
         ),
       ),
-    tuple: ($) => parens(sep2($.ref, ",", undefined)),
+    // TODO - this should permit more
+    tuple: ($) => parens(sep2($.expression, ",", undefined)),
     pipeline_expression: ($) => prec.right(binary($, "|>", $.expression)),
     call_expression: ($) =>
       prec(
@@ -297,11 +295,102 @@ module.exports = grammar({
     keyword_argument: ($) =>
       seq(field("name", $.identifier), "=", field("value", $.expression)),
 
+    // if/else
+    if_expression: ($) =>
+      seq(
+        "if",
+        field("condition", parens($.expression)),
+        bracesOptional(field("left", $.body)),
+        "else",
+        bracesOptional(field("right", $.body)),
+      ),
+
+    // foreach
+    foreach_expression: ($) =>
+      seq(
+        "foreach",
+        parens(
+          seq(parens(commaSep1($.identifier)), "<-", field("iterable", $.ref)),
+        ),
+        bracesOptional(field("body", $.body)),
+      ),
+
+    // Datalog
+    inject_expression: ($) =>
+      seq("inject", field("facts", $.ref), "into", field("relation", $.ref)),
+
+    query_expression: ($) =>
+      seq(
+        "query",
+        field("sources", $.query_source),
+        "select",
+        field("selection", $.query_selection),
+        "from",
+        $.relation_expression,
+      ),
+
+    datalog_expression: ($) =>
+      surr("#{", "}", repeat(choice($.datalog_fact, $.datalog_rule))),
+    datalog_fact: ($) => seq($.relation_expression, token.immediate(".")),
+
+    query_source: ($) => commaSep1($.identifier, false),
+    query_selection: ($) => parens(commaSep1($.identifier, false)),
+
+    // TODO - make parens "immediate"
+    relation_expression: ($) =>
+      seq(field("name", $.identifier), parens(commaSep1($.expression, false))),
+
+    datalog_rule: ($) =>
+      seq(
+        field("head", $.relation_expression),
+        ":-",
+        field("body", commaSep1($.relation_expression, false)),
+        optional(seq(",", "if", parens(field("condition", $.expression)))),
+        ".",
+      ),
+
+    datalog_type: ($) =>
+      surr(
+        "#{",
+        "}",
+        seq(
+          commaSep1($.relation_expression, false),
+          optional(seq("|", $.identifier)),
+        ),
+      ),
+
+    assignment: ($) =>
+      seq(
+        "let",
+        field("left", $.pattern),
+        "=",
+        field("right", $.expression),
+        $.semi,
+      ),
+
+    pattern: ($) =>
+      choice(
+        $.literal,
+        $.identifier,
+        $.path,
+        $.tuple_pattern,
+        $.enum_pattern,
+        $.record_pattern,
+      ),
+
+    tuple_pattern: ($) => parens(sep2($.pattern, ",", undefined)),
+    enum_pattern: ($) =>
+      seq(field("enum", $.ref), field("case", parens($.pattern))),
+    record_pattern: ($) =>
+      braces(commaSep1($.identifier, false), optional(seq("|", $.identifier))),
+
     // Types (basic surface syntax)
     ref: ($) => choice($.identifier, $.path),
     type_ref: ($) => choice($.ref, $.applied_type),
 
-    type: ($) => choice($.type_ref, $.arrow, $.type_record),
+    type: ($) =>
+      choice($.type_ref, $.arrow, $.type_record, $.tuple_type, $.datalog_type),
+    tuple_type: ($) => parens(sep2($.type, ",", undefined)),
     // Type application with one or more type arguments, e.g., List[Int], Map[String, Int]
     applied_type: ($) =>
       seq(
@@ -342,7 +431,8 @@ module.exports = grammar({
           seq("handler", $.path, braces(repeat1($.function_declaration))),
         ),
       ),
-    body: ($) => seq(repeat(seq($.expression, ";")), $.expression),
+    body: ($) =>
+      seq(repeat(choice($.assignment, seq($.expression, ";"))), $.expression),
 
     // Names
     path: ($) => sep2($.identifier, "."),
@@ -370,16 +460,24 @@ module.exports = grammar({
 
     literal: ($) => choice($.number, $.string, $.char, $.boolean),
 
+    string_fragment: (_) => token.immediate(choice(/\\./, /[^"\\$]+/)),
+
     interpolated_string: ($) => {
-      const esc = /\\./;
-      const interp = surr("${", "}", $.expression);
-      const content = repeat1(choice(interp, esc, /[^"\\$]+/, /\\\{/, /\\\}/));
-      return surr('"', '"', content);
+      const expr = surr("${", "}", field("expression", $.expression));
+      const fragment = field("fragment", $.string_fragment);
+      return surr(
+        '"',
+        '"',
+        choice(
+          seq(repeat1(seq(fragment, expr)), optional(fragment)),
+          seq(repeat1(seq(expr, fragment)), optional(expr)),
+        ),
+      );
     },
 
     // Literals (basic)
     number: (_) => /\d+(_\d+)*(\.\d*)?/,
-    string: (_) => surr('"', '"', repeat(choice(/[^"\\]/, /\\./))),
+    string: ($) => surr('"', '"', repeat($.string_fragment)),
     char: (_) => surr("'", "'", choice(/[^'\\]/, /\\./)),
     boolean: (_) => choice("true", "false"),
   },
