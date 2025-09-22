@@ -30,7 +30,6 @@ module.exports = grammar({
 
   precedences: ($) => [
     [
-      "composition",
       "unary_void",
       "binary_exp",
       "binary_times",
@@ -44,8 +43,10 @@ module.exports = grammar({
       "bitwise_or",
       "logical_and",
       "logical_or",
+      "composition",
     ],
     [$.body, $.expression, $.pipeline_expression, $.keyword_argument],
+    [$.expression, $.type, $._type_ref],
   ],
 
   word: ($) => $.identifier,
@@ -181,9 +182,7 @@ module.exports = grammar({
         $,
         "eff",
         field("name", $.identifier),
-        "{",
-        repeat($.signature),
-        "}",
+        surr("{", "}", repeat($.signature)),
       ),
 
     signature: ($) =>
@@ -234,16 +233,16 @@ module.exports = grammar({
 
     // Expressions
     expression: ($) =>
-      prec.left(
-        choice(
-          $.interpolated_string,
-          $.literal,
-          $.path,
-          $.call_expression,
-          $.pipeline_expression,
-          $.binary_expression,
-          $.eff_handle_block,
-        ),
+      choice(
+        $.call_expression,
+        $.binary_expression,
+        $.tuple,
+        $.arrow,
+        $.path,
+        $.literal,
+        $.interpolated_string,
+        $.pipeline_expression,
+        $.eff_handle_block,
       ),
 
     binary_expression: ($) =>
@@ -281,6 +280,7 @@ module.exports = grammar({
           ),
         ),
       ),
+    tuple: ($) => parens(commaSep1($.expression, undefined)),
     pipeline_expression: ($) => prec.right(binary($, "|>", $.expression)),
     call_expression: ($) =>
       prec(
@@ -306,18 +306,17 @@ module.exports = grammar({
       seq(field("name", $.identifier), "=", field("value", $.expression)),
 
     // Types (basic surface syntax)
-    _type_ref: ($) => choice($.path, $.applied_type),
+    _ref: ($) => choice($.identifier, $.path),
+    _type_ref: ($) => choice($._ref, $.applied_type),
 
-    type: ($) => choice($._type_ref, $.type_arrow, $.type_tuple, $.type_record),
+    type: ($) => choice($._type_ref, $.arrow, $.type_record),
     // Type application with one or more type arguments, e.g., List[Int], Map[String, Int]
     applied_type: ($) =>
       seq(
-        field("type", $.path),
+        field("type", $._ref),
         field("parameters", brackets(commaSep1($.type, undefined))),
       ),
-    // Simple type name (possibly qualified), e.g., Int, String, MyModule.MyType
-    type_tuple: ($) => parens(commaSep1($.type, undefined)),
-    type_arrow: ($) =>
+    arrow: ($) =>
       prec.right(
         seq(
           sep2($.type, "->", false, prec.right),
@@ -351,7 +350,7 @@ module.exports = grammar({
     body: ($) => seq(repeat(seq($.expression, ";")), $.expression),
 
     // Names
-    path: ($) => sep1($.identifier, "."),
+    path: ($) => sep2($.identifier, "."),
     identifier: (_) => /[A-Za-z_][A-Za-z0-9_]*/,
     // Modifiers, annotations, docs
     modifier: (_) =>
