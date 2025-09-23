@@ -182,17 +182,23 @@ module.exports = grammar({
         surr("{", "}", repeat($.signature)),
       ),
 
-    signature: ($) =>
-      moddedSeq(
-        $,
+    _def_fn: ($) =>
+      seq(
         "def",
         field("name", $.identifier),
         field("params", $._fn_parameters),
         optional(seq(":", field("result_type", $.type))),
         optional(seq("\\", field("effect", $.eff_expr))),
       ),
+
+    signature: ($) => moddedSeq($, $._def_fn),
     function_declaration: ($) =>
-      seq($.signature, "=", field("body", bracesOptional($.body))),
+      moddedSeq(
+        $,
+        field("signature", $._def_fn),
+        "=",
+        field("body", bracesOptional($.body)),
+      ),
     // Use/Import (simplified)
     use_or_import: ($) =>
       seq(
@@ -361,8 +367,7 @@ module.exports = grammar({
 
     assignment: ($) =>
       seq(
-        "let",
-        field("left", $.pattern),
+        choice(seq("let", field("left", $.pattern)), $._def_fn),
         "=",
         field("right", $.expression),
         $.semi,
@@ -469,6 +474,7 @@ module.exports = grammar({
         '"',
         '"',
         choice(
+          expr,
           seq(repeat1(seq(fragment, expr)), optional(fragment)),
           seq(repeat1(seq(expr, fragment)), optional(expr)),
         ),
