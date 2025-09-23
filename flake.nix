@@ -20,6 +20,7 @@
       {
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
+            eslint_d
             tree-sitter
             bun
             python3
