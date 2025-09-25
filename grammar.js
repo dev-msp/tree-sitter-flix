@@ -16,7 +16,7 @@ module.exports = grammar({
 
   extras: ($) => [/\s+/, $.comment],
 
-  inline: ($) => [$.ref, $.type_ref, $.semi],
+  inline: ($) => [$.ref, $.type_ref],
 
   conflicts: ($) => [
     [$.expression, $.call_expression],
@@ -43,7 +43,13 @@ module.exports = grammar({
       "logical_and",
       "logical_or",
     ],
-    [$.body, $.expression, $.pipeline_expression, $.keyword_argument],
+    [
+      "application",
+      $.body,
+      $.expression,
+      $.pipeline_expression,
+      $.keyword_argument,
+    ],
   ],
 
   word: ($) => $.identifier,
@@ -52,11 +58,11 @@ module.exports = grammar({
 
   rules: {
     // Top
-    source_file: ($) => repeat($._unit),
-    _unit: ($) => choice($.use_or_import, $.declaration),
+    source_file: ($) => repeat($.declaration),
     // Declarations (rough surface-syntax sketch)
     declaration: ($) =>
       choice(
+        $.import_decl,
         $.mod_decl,
         $.function_declaration,
         $.enum_definition,
@@ -67,7 +73,12 @@ module.exports = grammar({
         $.type_alias_decl,
       ),
     mod_decl: ($) =>
-      moddedSeq($, "mod", field("name", $.identifier), braces(repeat($._unit))),
+      moddedSeq(
+        $,
+        "mod",
+        field("name", $.identifier),
+        braces(repeat($.declaration)),
+      ),
     enum_definition: ($) =>
       moddedSeq(
         $,
@@ -197,7 +208,7 @@ module.exports = grammar({
 
     _import_alias: ($) =>
       braces(seq($._qualified_java_reference, "=>", $.identifier)),
-    use_or_import: ($) =>
+    import_decl: ($) =>
       seq(
         choice("use", "import"),
         $.path,
@@ -237,7 +248,9 @@ module.exports = grammar({
           $.pipeline_expression,
           $.binary_expression,
           $.if_expression,
+          $.match_expression,
           $.foreach_expression,
+          $.record_field_access,
           $.datalog_expression,
           $.inject_expression,
           $.query_expression,
@@ -307,6 +320,18 @@ module.exports = grammar({
         bracesOptional(field("right", $.body)),
       ),
 
+    // match
+    match_expression: ($) =>
+      seq("match", field("value", $.expression), braces(repeat1($.match_case))),
+    match_case: ($) =>
+      seq(
+        "case",
+        field("pattern", $.pattern),
+        optional(seq("if", parens(field("guard", $.expression)))),
+        "=>",
+        field("body", $.body),
+      ),
+
     // foreach
     foreach_expression: ($) =>
       seq(
@@ -315,6 +340,13 @@ module.exports = grammar({
           seq(parens(commaSep1($.identifier)), "<-", field("iterable", $.ref)),
         ),
         bracesOptional(field("body", $.body)),
+      ),
+
+    record_field_access: ($) =>
+      seq(
+        field("record", choice(parens($.expression), $.ref)),
+        "#",
+        field("field", $.identifier),
       ),
 
     // Datalog
@@ -361,7 +393,7 @@ module.exports = grammar({
         choice(seq("let", field("left", $.pattern)), $._def_fn),
         "=",
         field("right", $.expression),
-        $.semi,
+        $._semi,
       ),
 
     pattern: ($) =>
@@ -378,7 +410,10 @@ module.exports = grammar({
     enum_pattern: ($) =>
       seq(field("enum", $.ref), field("case", parens($.pattern))),
     record_pattern: ($) =>
-      braces(commaSep1($.identifier), optional(seq("|", $.identifier))),
+      braces(
+        commaSep1($.identifier),
+        optional(field("remainder", seq("|", $.identifier))),
+      ),
 
     // Types (basic surface syntax)
     ref: ($) => choice($.identifier, $.path),
@@ -428,7 +463,10 @@ module.exports = grammar({
         ),
       ),
     body: ($) =>
-      seq(repeat(choice($.assignment, seq($.expression, ";"))), $.expression),
+      seq(
+        repeat(seq(choice($.expression, $.assignment), $._semi)),
+        $.expression,
+      ),
 
     // Names
     path: ($) => sep2($.identifier, "."),
@@ -448,7 +486,7 @@ module.exports = grammar({
     annotation: ($) => seq("@", $.identifier, optional($.argument_list)),
     doc_comment: (_) => token(repeat1(seq("///", /.*/, /\s*/))),
     // Misc helpers
-    semi: (_) => ";",
+    _semi: (_) => ";",
     comment: (_) =>
       token(
         choice(seq("//", /[^/].*/), seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
